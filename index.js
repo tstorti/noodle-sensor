@@ -21,12 +21,12 @@ var app = {
         });
     }, 
 
-    getSettings:function(config.deviceID){
+    getSettings:function(deviceID){
         //---------------------------------------------------------------------------
         //TODO: write get request to web server so settings can be used to update state
         //---------------------------------------------------------------------------
 
-    }
+    },
 
     initGPIO: function(){
         //this is for relay channel one (water pump)
@@ -37,21 +37,25 @@ var app = {
 
     //close relay circuit for channel 11
     pumpOn: function(){
+        console.log("turning pump relay on");
         gpio.write(11, false);
     },
 
     //open relay circuit for channel 11
     pumpOff: function(){
+		console.log("turning pump relay off");
         gpio.write(11, true);
     },
 
     //close relay circuit for channel 12
     lightOn: function(){
+		console.log("turning light relay on");
         gpio.write(12, false);
     },
 
     //open relay circuit for channel 11
     lightOff: function(){
+		console.log("turning light relay off");
         gpio.write(12, true);
     }, 
 
@@ -62,7 +66,7 @@ var app = {
 //----------------------------------------------------------------
 
 app.initGPIO();
-console.log("Running Test scripts for device "+ config.deviceID);
+console.log("Running Test scripts for device "+ config.settings.deviceID);
 
 //turn each relay channel off/on every 10 seconds to demonstrate functionality:
 var state = "off";

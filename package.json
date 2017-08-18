@@ -17,6 +17,7 @@
   },
   "homepage": "https://github.com/tstorti/noodle-sensor#readme",
   "dependencies": {
-    "node-adafruit-bme280": "^1.0.2"
+    "node-adafruit-bme280": "^1.0.2",
+    "rpi-gpio": "^0.8.1"
   }
 }
