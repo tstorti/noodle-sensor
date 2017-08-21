@@ -1,7 +1,13 @@
 var config = require("./config/config.js");
 
+//library for temp/humidity sensor
 var BME280 = require('node-adafruit-bme280');
+
+//library for read/write on gpio pins
 var gpio = require("rpi-gpio");
+
+//library for MCP3800
+var mcpadc = require("mcp-spi-adc");
 
 
 var app = {
@@ -65,10 +71,11 @@ var app = {
 //-------Below Code for testing purposes only. -------------------
 //----------------------------------------------------------------
 
-app.initGPIO();
+//app.initGPIO();
 console.log("Running Test scripts for device "+ config.settings.deviceID);
 
-//turn each relay channel off/on every 10 seconds to demonstrate functionality:
+
+//turn each relay channel off/on every 10 seconds to demonstrate relay functionality:
 var state = "off";
 var count = 0;
 
@@ -99,3 +106,37 @@ var interval2 = setInterval(function(){
     app.collectData();
 
 },5000);
+
+
+//demonstrate MCP3008 is working by logging input voltages from photoresitor
+//connected to channel 1 of 8 on MCP3008
+var lightSensor = mcpadc.open(0,{speed:20000},function(err){
+	if (err) throw err;
+
+	var interval3 = setInterval(function(){
+		lightSensor.read(function(err, reading){
+			if (err) throw err;
+			
+			//reading.value returns a number between 0 and 1.  The lower the value, the brighter the light source
+			console.log("photoresistor reading: "+ reading.value);
+		});
+
+	},5000);
+});
+
+
+//soil moisture reading - connected to channel #2 of 8 on mcp3008 using analog out
+var soilMoistureSensor = mcpadc.open(1,{speed:20000},function(err){
+	if (err) throw err;
+
+	var interval4 = setInterval(function(){
+		soilMoistureSensor.read(function(err, reading){
+			if (err) throw err;
+			
+			//reading returns a number between 0 and 1.  
+			//if totally dry conditions, returns 1.  Sensor submerged in water returns ~0.5
+			console.log("soil moisture reading: "+ reading.value);
+		});
+
+	},5000);
+});
