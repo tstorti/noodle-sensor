@@ -70,12 +70,29 @@ var app = {
                 
             });
 
+            var probe4 = new Promise(function(resolve, reject){
+                
+                var waterSensor = mcpadc.open(2,{speed:20000},function(err){
+					if (err) throw err;
+					waterSensor.read(function(err, reading){
+						if (err) throw err;
+			
+						//reading.value returns a number between 0 and 1. 
+						//if totally dry conditions, returns 0.  Sensor submerged in water returns 1.
+						console.log("water level reading: "+ reading.value);
+						app.currentWater = reading.value;
+						resolve();
+					});
+                });
+                
+            });
+            
             //record data once all the probes collect measurements
-            Promise.all([probe1, probe2, probe3]).then(function(){
+            Promise.all([probe1, probe2, probe3, probe4]).then(function(){
                 app.recordData();
             });
 
-        },10000);
+        },60000);
     },
 
     recordData: function(){
@@ -105,7 +122,7 @@ var app = {
         });
 
     }, 
-
+	
     getSettings:function(){
         //interval defines how often we check server for new settings
         var settingsInterval = setInterval(function(){
@@ -119,6 +136,7 @@ var app = {
                     return(err);
                 }
                 var status = JSON.parse(body);
+                console.log("checked sensor status table for updates");
                 
                 //update pump
                 if(status.pumpOn){
