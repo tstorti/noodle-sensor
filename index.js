@@ -15,8 +15,6 @@ var request = require('ajax-request');
 
 var app = {
 
-    lightSensor:null,
-    soilSensor:null,
     isPumpOn: false,
     isLightOn: false,
     isAutoPumpOn: false,
@@ -42,22 +40,34 @@ var app = {
                 });
             });
             var probe2 = new Promise(function (resolve, reject) {
-                app.lightSensor.read(function(err, reading){
-                    if (err) throw err;
-                    //reading.value returns a number between 0 and 1.  The lower the value, the brighter the light source
-                    console.log("photoresistor reading: "+ reading.value);
-                    app.currentLight = reading.value;
-                    resolve();
+                
+                var lightSensor = mcpadc.open(0,{speed:20000},function(err){
+					if (err) throw err;
+					lightSensor.read(function(err, reading){
+						if (err) throw err;
+			
+						//reading.value returns a number between 0 and 1.  The lower the value, the brighter the light source
+						console.log("photoresistor reading: "+ reading.value);
+						app.currentLight = reading.value;
+						resolve();
+					});
                 });
             });
             var probe3 = new Promise(function(resolve, reject){
-                app.soilSensor.read(function(err, reading){
-                    if (err) throw err;
-                    //reading.value returns a number between 0 and 1.  The lower the value, the brighter the light source
-                    console.log("soil moisture reading: "+ reading.value);
-                    app.currentSoil = reading.value;
-                    resolve();
+                
+                var soilSensor = mcpadc.open(1,{speed:20000},function(err){
+					if (err) throw err;
+					soilSensor.read(function(err, reading){
+						if (err) throw err;
+			
+						//reading.value returns a number between 0 and 1. 
+						//if totally dry conditions, returns 1.  Sensor submerged in water returns ~0.5
+						console.log("soil moisture reading: "+ reading.value);
+						app.currentSoil = reading.value;
+						resolve();
+					});
                 });
+                
             });
 
             //record data once all the probes collect measurements
@@ -136,7 +146,6 @@ var app = {
     
     initApp: function(){
         this.initGPIO();
-        this.initMCP3008();
         this.getSettings();
         this.collectData();
     },
@@ -148,17 +157,12 @@ var app = {
         gpio.setup(12, gpio.DIR_HIGH);
     },
 
-    initMCP3008: function(){
-        app.lightSensor = mcpadc.open(0,{speed:20000});
-        app.soilSensor = mcpadc.open(1,{speed:20000});
-    },
-
     //close relay circuit for channel 11
     pumpOn: function(){
         //if status has changed
-        if(isPumpOn===false){
+        if(this.isPumpOn===false){
            console.log("turning pump relay on");
-            isPumpOn = true;
+            this.isPumpOn = true;
             gpio.write(11, false); 
         }
     },
@@ -166,9 +170,9 @@ var app = {
     //open relay circuit for channel 11
     pumpOff: function(){
         //if status has changed
-        if(isPumpOn===true){
+        if(this.isPumpOn===true){
             console.log("turning pump relay off");
-            isPumpOn = false;
+            this.isPumpOn = false;
             gpio.write(11, true);
         }
     },
@@ -176,9 +180,9 @@ var app = {
     //close relay circuit for channel 12
     lightOn: function(){
         //if status has changed
-        if(isLightOn===false){
+        if(this.isLightOn===false){
             console.log("turning light relay on");
-            isLightOn=true;
+            this.isLightOn=true;
             gpio.write(12, false);
         }
     },
@@ -186,9 +190,9 @@ var app = {
     //open relay circuit for channel 11
     lightOff: function(){
         //if status has changed
-        if(isLightOn===true){
+        if(this.isLightOn===true){
             console.log("turning light relay off");
-            isLightOn=false;
+            this.isLightOn=false;
             gpio.write(12, true);
         }
     }, 
