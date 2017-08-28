@@ -92,7 +92,7 @@ var app = {
                 app.recordData();
             });
 
-        },60000);
+        },300000);
     },
 
     recordData: function(){
@@ -136,7 +136,6 @@ var app = {
                     return(err);
                 }
                 var status = JSON.parse(body);
-                console.log("checked sensor status table for updates");
                 
                 //update pump
                 if(status.pumpOn){
@@ -177,11 +176,32 @@ var app = {
 
     //close relay circuit for channel 11
     pumpOn: function(){
+        
         //if status has changed
         if(this.isPumpOn===false){
            console.log("turning pump relay on");
             this.isPumpOn = true;
             gpio.write(11, false); 
+            
+            //turn pump off after 10 seconds
+            setTimeout(function(){ 
+                
+                app.pumpOff();
+                //update the db so the pump isn't restarted again when status is refreshed.
+                var updates = "id="+ config.settings.deviceID+"&pumpOn=false";
+                $.ajax({       
+                    type: 'PUT',
+                    url: 'https://noodle-northwestern.herokuapp.com/api/config/update',
+                    data: updates,
+                    success: function(data) {    
+                        console.log("database updated with pump status");
+                    },
+                });
+                
+            }, 10000);
+
+
+
         }
     },
 
