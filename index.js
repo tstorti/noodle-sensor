@@ -25,6 +25,7 @@ var app = {
     currentSoil: 0,
     currentLight:0,
     currentWater:0,
+    autoPumpInterval:null,
 
     collectData: function(){
         //interval defines how often new data is grabbed
@@ -83,8 +84,7 @@ var app = {
 						app.currentWater = reading.value;
 						resolve();
 					});
-                });
-                
+                }); 
             });
             
             //record data once all the probes collect measurements
@@ -151,11 +151,15 @@ var app = {
                 else{
                     app.lightOff();
                 }
-
-                //set auto values - still need to configure functionality
-                isAutoPumpOn= status.autoPumpOn;
-                isAutoLightOn= status.autoLightOn;
-                currentTargetSoil= status.targetSoil;
+                //if autoPump is on, use target soil moisture to begin cycling water pump every 10 min until target is reached whenever plant gets too dry.
+                if(status.autoPumpOn){
+                    app.autoPumpOn();
+                }
+                
+                //auto light not configured.
+                app.isAutoLightOn= status.autoLightOn;
+                app.currentTargetSoil= status.targetSoil;
+                   
             });
         },5000);
 
@@ -174,10 +178,31 @@ var app = {
         gpio.setup(12, gpio.DIR_HIGH);
     },
 
+    //this function auto-waters every 10 minutes if the target moisture level is not being met.
+    autoPumpOn: function(){
+        //check to make sure autoPump isnt already on - so we don't create duplicate interval
+        if(app.currentTargetSoil < currentSoil && this.isAutoPumpOn === false){
+            this.isAutoPumpOn = true;
+            //turn on pump for 10 seconds
+            app.pumpOn();
+            
+            //keep running pump every 10 minutes until soil moisture meets target
+            app.autoPumpInterval = setInterval(function(){
+                app.pumpOn();
+            },600000); 
+        }
+        //if autoPump is already running, and soil reaches appropriate moisture level, turn off watering
+        else if (app.currentTargetSoil >= currentSoil && this.isAutoPumpOn === true){
+            //turn off pump interval
+            clearInterval(app.autoPumpInterval)
+            this.isAutoPumpOn = false;
+        }              
+    },
+    
     //close relay circuit for channel 11
     pumpOn: function(){
         
-        //if status has changed
+        //check to see if pump is already running
         if(this.isPumpOn===false){
            console.log("turning pump relay on");
             this.isPumpOn = true;
@@ -199,20 +224,14 @@ var app = {
                 });
                 
             }, 10000);
-
-
-
         }
     },
 
     //open relay circuit for channel 11
     pumpOff: function(){
-        //if status has changed
-        if(this.isPumpOn===true){
-            console.log("turning pump relay off");
-            this.isPumpOn = false;
-            gpio.write(11, true);
-        }
+        console.log("turning pump relay off");
+        this.isPumpOn = false;
+        gpio.write(11, true);
     },
 
     //close relay circuit for channel 12
@@ -227,12 +246,9 @@ var app = {
 
     //open relay circuit for channel 11
     lightOff: function(){
-        //if status has changed
-        if(this.isLightOn===true){
-            console.log("turning light relay off");
-            this.isLightOn=false;
-            gpio.write(12, true);
-        }
+        console.log("turning light relay off");
+        this.isLightOn=false;
+        gpio.write(12, true);
     }, 
 
 };
