@@ -1,5 +1,5 @@
 exports.settings = {
-    deviceID: 1,
+    deviceID: 4,
     //TODO - if we want to customize code to allow for presence of individual sensors/devices
     // tempHumidity: true,
     // soilMoisture: true,

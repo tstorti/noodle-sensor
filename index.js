@@ -136,29 +136,27 @@ var app = {
                     return(err);
                 }
                 var status = JSON.parse(body);
-                
+        
                 //update pump
-                if(status.pumpOn){
+                if(status[0].pumpOn){
                     app.pumpOn();
                 }
                 else{
                     app.pumpOff();
                 }
                 //update light
-                if(status.lightOn){
+                if(status[0].lightOn){
                     app.lightOn();
                 }
                 else{
                     app.lightOff();
                 }
                 //if autoPump is on, use target soil moisture to begin cycling water pump every 10 min until target is reached whenever plant gets too dry.
-                if(status.autoPumpOn){
+                if(status[0].autoPumpOn){
                     app.autoPumpOn();
                 }
                 
                 //auto light not configured.
-                app.isAutoLightOn= status.autoLightOn;
-                app.currentTargetSoil= status.targetSoil;
                    
             });
         },5000);
@@ -181,8 +179,8 @@ var app = {
     //this function auto-waters every 10 minutes if the target moisture level is not being met.
     autoPumpOn: function(){
         //check to make sure autoPump isnt already on - so we don't create duplicate interval
-        if(app.currentTargetSoil < currentSoil && this.isAutoPumpOn === false){
-            this.isAutoPumpOn = true;
+        if(app.currentTargetSoil < currentSoil && app.isAutoPumpOn === false){
+            app.isAutoPumpOn = true;
             //turn on pump for 10 seconds
             app.pumpOn();
             
@@ -192,10 +190,10 @@ var app = {
             },600000); 
         }
         //if autoPump is already running, and soil reaches appropriate moisture level, turn off watering
-        else if (app.currentTargetSoil >= currentSoil && this.isAutoPumpOn === true){
+        else if (app.currentTargetSoil >= currentSoil && app.isAutoPumpOn === true){
             //turn off pump interval
             clearInterval(app.autoPumpInterval)
-            this.isAutoPumpOn = false;
+            app.isAutoPumpOn = false;
         }              
     },
     
@@ -203,25 +201,28 @@ var app = {
     pumpOn: function(){
         
         //check to see if pump is already running
-        if(this.isPumpOn===false){
+        if(app.isPumpOn===false){
            console.log("turning pump relay on");
-            this.isPumpOn = true;
+            app.isPumpOn = true;
             gpio.write(11, false); 
             
             //turn pump off after 10 seconds
             setTimeout(function(){ 
                 
-                app.pumpOff();
-                //update the db so the pump isn't restarted again when status is refreshed.
-                var updates = "id="+ config.settings.deviceID+"&pumpOn=false";
-                $.ajax({       
-                    type: 'PUT',
-                    url: 'https://noodle-northwestern.herokuapp.com/api/config/update',
-                    data: updates,
-                    success: function(data) {    
-                        console.log("database updated with pump status");
-                    },
-                });
+                request({       
+					method: 'PUT',
+					url: 'https://noodle-northwestern.herokuapp.com/api/config/update',
+					data: {
+						"id": config.settings.deviceID,
+						"pumpOn":false,
+						}
+					}, function(err, res, body) {
+						if(err){
+							return(err);
+						}
+					app.pumpOff();
+					//console.log(body);
+				});
                 
             }, 10000);
         }
@@ -229,25 +230,25 @@ var app = {
 
     //open relay circuit for channel 11
     pumpOff: function(){
-        console.log("turning pump relay off");
-        this.isPumpOn = false;
+        //console.log("turning pump relay off");
+        app.isPumpOn = false;
         gpio.write(11, true);
     },
 
     //close relay circuit for channel 12
     lightOn: function(){
         //if status has changed
-        if(this.isLightOn===false){
+        if(app.isLightOn===false){
             console.log("turning light relay on");
-            this.isLightOn=true;
+            app.isLightOn=true;
             gpio.write(12, false);
         }
     },
 
     //open relay circuit for channel 11
     lightOff: function(){
-        console.log("turning light relay off");
-        this.isLightOn=false;
+        //console.log("turning light relay off");
+        app.isLightOn=false;
         gpio.write(12, true);
     }, 
 
