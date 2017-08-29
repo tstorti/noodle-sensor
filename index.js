@@ -9,29 +9,164 @@ var gpio = require("rpi-gpio");
 //library for MCP3800
 var mcpadc = require("mcp-spi-adc");
 
+//ajax library for post and get requests
+var request = require('ajax-request');
+
 
 var app = {
 
-    
+    isPumpOn: false,
+    isLightOn: false,
+    isAutoPumpOn: false,
+    isAutoLightOn: false,
+    currentTargetSoil: 0,
+    currentTemp:0,
+    currentHumid:0,
+    currentSoil: 0,
+    currentLight:0,
+    currentWater:0,
+    autoPumpInterval:null,
+
     collectData: function(){
-        BME280.probe(function(temperature, pressure, humidity) {
-            //temperature in C
-            console.log("Temperature: "+ temperature);
-            //percentage humidity
-            console.log("Current Humidity: "+ humidity);                
-        
-            //--------------------------------------------------------------------
-            //TODO: write post request to web server so data can be recorded in db
-            //-------------------------------------------------------------------- 
-        
+        //interval defines how often new data is grabbed
+        var dataInterval = setInterval(function(){
+
+            var probe1 = new Promise(function (resolve, reject) {
+                BME280.probe(function(temperature, pressure, humidity) {
+                    console.log("Temperature: "+ temperature);
+                    console.log("Current Humidity: "+ humidity);
+                    app.currentTemp = temperature;
+                    app.currentHumid = humidity;
+                    resolve();                
+                });
+            });
+            var probe2 = new Promise(function (resolve, reject) {
+                
+                var lightSensor = mcpadc.open(0,{speed:20000},function(err){
+					if (err) throw err;
+					lightSensor.read(function(err, reading){
+						if (err) throw err;
+			
+						//reading.value returns a number between 0 and 1.  The lower the value, the brighter the light source
+						console.log("photoresistor reading: "+ reading.value);
+						app.currentLight = reading.value;
+						resolve();
+					});
+                });
+            });
+            var probe3 = new Promise(function(resolve, reject){
+                
+                var soilSensor = mcpadc.open(1,{speed:20000},function(err){
+					if (err) throw err;
+					soilSensor.read(function(err, reading){
+						if (err) throw err;
+			
+						//reading.value returns a number between 0 and 1. 
+						//if totally dry conditions, returns 1.  Sensor submerged in water returns ~0.5
+						console.log("soil moisture reading: "+ reading.value);
+						app.currentSoil = reading.value;
+						resolve();
+					});
+                });
+                
+            });
+
+            var probe4 = new Promise(function(resolve, reject){
+                
+                var waterSensor = mcpadc.open(2,{speed:20000},function(err){
+					if (err) throw err;
+					waterSensor.read(function(err, reading){
+						if (err) throw err;
+			
+						//reading.value returns a number between 0 and 1. 
+						//if totally dry conditions, returns 0.  Sensor submerged in water returns 1.
+						console.log("water level reading: "+ reading.value);
+						app.currentWater = reading.value;
+						resolve();
+					});
+                }); 
+            });
+            
+            //record data once all the probes collect measurements
+            Promise.all([probe1, probe2, probe3, probe4]).then(function(){
+                app.recordData();
+            });
+
+        },300000);
+    },
+
+    recordData: function(){
+
+        //do post request to the api with all of the current sensor data and settings
+        request({
+            url: "https://noodle-northwestern.herokuapp.com/api/record/",
+            method: 'POST',
+            data: {
+                temp: app.currentTemp,
+                humid: app.currentHumid,
+                soil: app.currentSoil,
+                light: app.currentLight,
+                water:app.currentWater,
+                pumpOn: app.isPumpOn,
+                lightOn: app.isLightOn,
+                autoLightOn: app.isAutoLightOn,
+                autoPumpOn: app.isAutoPumpOn,
+                targetSoil: app.currentTargetSoil,
+                SensorId: config.settings.deviceID,
+            }
+        }, function(err, res, body) {
+            if(err){
+                return(err);
+            }
+            console.log("data posted");
         });
+
     }, 
+	
+    getSettings:function(){
+        //interval defines how often we check server for new settings
+        var settingsInterval = setInterval(function(){
 
-    getSettings:function(deviceID){
-        //---------------------------------------------------------------------------
-        //TODO: write get request to web server so settings can be used to update state
-        //---------------------------------------------------------------------------
+            var url = "https://noodle-northwestern.herokuapp.com/api/config/" + config.settings.deviceID;
+            request({
+                url: url,
+                method: 'GET'
+            }, function(err, res, body) {
+                if(err){
+                    return(err);
+                }
+                var status = JSON.parse(body);
+        
+                //update pump
+                if(status[0].pumpOn){
+                    app.pumpOn();
+                }
+                else{
+                    app.pumpOff();
+                }
+                //update light
+                if(status[0].lightOn){
+                    app.lightOn();
+                }
+                else{
+                    app.lightOff();
+                }
+                //if autoPump is on, use target soil moisture to begin cycling water pump every 10 min until target is reached whenever plant gets too dry.
+                if(status[0].autoPumpOn){
+                    app.autoPumpOn();
+                }
+                
+                //auto light not configured.
+                   
+            });
+        },5000);
 
+    },
+    
+    initApp: function(){
+        this.initGPIO();
+        this.getSettings();
+        this.collectData();
     },
 
     initGPIO: function(){
@@ -41,32 +176,88 @@ var app = {
         gpio.setup(12, gpio.DIR_HIGH);
     },
 
+    //this function auto-waters every 10 minutes if the target moisture level is not being met.
+    autoPumpOn: function(){
+        //check to make sure autoPump isnt already on - so we don't create duplicate interval
+        if(app.currentTargetSoil < currentSoil && app.isAutoPumpOn === false){
+            app.isAutoPumpOn = true;
+            //turn on pump for 10 seconds
+            app.pumpOn();
+            
+            //keep running pump every 10 minutes until soil moisture meets target
+            app.autoPumpInterval = setInterval(function(){
+                app.pumpOn();
+            },600000); 
+        }
+        //if autoPump is already running, and soil reaches appropriate moisture level, turn off watering
+        else if (app.currentTargetSoil >= currentSoil && app.isAutoPumpOn === true){
+            //turn off pump interval
+            clearInterval(app.autoPumpInterval)
+            app.isAutoPumpOn = false;
+        }              
+    },
+    
     //close relay circuit for channel 11
     pumpOn: function(){
-        console.log("turning pump relay on");
-        gpio.write(11, false);
+        
+        //check to see if pump is already running
+        if(app.isPumpOn===false){
+           console.log("turning pump relay on");
+            app.isPumpOn = true;
+            gpio.write(11, false); 
+            
+            //turn pump off after 10 seconds
+            setTimeout(function(){ 
+                
+                request({       
+					method: 'PUT',
+					url: 'https://noodle-northwestern.herokuapp.com/api/config/update',
+					data: {
+						"id": config.settings.deviceID,
+						"pumpOn":false,
+						}
+					}, function(err, res, body) {
+						if(err){
+							return(err);
+						}
+					app.pumpOff();
+					//console.log(body);
+				});
+                
+            }, 10000);
+        }
     },
 
     //open relay circuit for channel 11
     pumpOff: function(){
-		console.log("turning pump relay off");
+        //console.log("turning pump relay off");
+        app.isPumpOn = false;
         gpio.write(11, true);
     },
 
     //close relay circuit for channel 12
     lightOn: function(){
-		console.log("turning light relay on");
-        gpio.write(12, false);
+        //if status has changed
+        if(app.isLightOn===false){
+            console.log("turning light relay on");
+            app.isLightOn=true;
+            gpio.write(12, false);
+        }
     },
 
     //open relay circuit for channel 11
     lightOff: function(){
-		console.log("turning light relay off");
+        //console.log("turning light relay off");
+        app.isLightOn=false;
         gpio.write(12, true);
     }, 
 
 };
 
+app.initApp();
+
+
+/*
 //----------------------------------------------------------------
 //-------Below Code for testing purposes only. -------------------
 //----------------------------------------------------------------
@@ -103,7 +294,12 @@ var interval1 = setInterval(function(){
 //demonstrate BME280 is working by logging temp and humidity every 5 seconds.
 var interval2 = setInterval(function(){
     
-    app.collectData();
+    BME280.probe(function(temperature, pressure, humidity) {
+        //temperature in C
+        console.log("Temperature: "+ temperature);
+        //percentage humidity
+        console.log("Current Humidity: "+ humidity);                
+    });
 
 },5000);
 
@@ -140,3 +336,4 @@ var soilMoistureSensor = mcpadc.open(1,{speed:20000},function(err){
 
 	},5000);
 });
+*/
